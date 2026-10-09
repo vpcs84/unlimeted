@@ -3,7 +3,7 @@ const { addonBuilder, getRouter } = require('stremio-addon-sdk');
 
 const manifest = {
     id: 'org.unlimplay.stremio',
-    version: '1.5.0',
+    version: '1.5.1',
     name: 'UnlimPlay Streams',
     description: 'Player Web oficial encapsulado para Filmes e Séries via UnlimPlay.',
     resources: ['stream'],
@@ -15,10 +15,13 @@ const manifest = {
 const builder = new addonBuilder(manifest);
 
 // 1. Manipulador de Streams do Stremio
-builder.defineStreamHandler((args, req) => {
+builder.defineStreamHandler((args) => {
     const { type, id } = args;
-    const host = req.headers.host || 'localhost:3000';
-    const protocol = req.headers['x-forwarded-proto'] || 'https';
+
+    // Detecta automaticamente o domínio na Vercel
+    const domain = process.env.VERCEL_URL 
+        ? `https://${process.env.VERCEL_URL}` 
+        : 'http://localhost:7000';
 
     let playerPath = null;
 
@@ -35,12 +38,11 @@ builder.defineStreamHandler((args, req) => {
     }
 
     if (playerPath) {
-        const playerUrl = `${protocol}://${host}${playerPath}`;
         return Promise.resolve({
             streams: [
                 {
                     title: '▶ UnlimPlay (Player Web Encapsulado)',
-                    externalUrl: playerUrl
+                    externalUrl: `${domain}${playerPath}`
                 }
             ]
         });
@@ -51,7 +53,7 @@ builder.defineStreamHandler((args, req) => {
 
 const app = express();
 
-// 2. Rota HTML que renderiza o Iframe (Simula a "VISTA PREVIA")
+// 2. Rota HTML que renderiza o Iframe sem bloqueios de token
 app.get('/player/:type/:id/:season?/:episode?', (req, res) => {
     const { type, id, season, episode } = req.params;
     let embedSrc = '';
@@ -66,7 +68,6 @@ app.get('/player/:type/:id/:season?/:episode?', (req, res) => {
         return res.status(400).send('Parâmetros inválidos');
     }
 
-    // Retorna HTML responsivo em tela cheia com Iframe
     res.send(`
         <!DOCTYPE html>
         <html lang="es">
@@ -91,7 +92,7 @@ app.get('/player/:type/:id/:season?/:episode?', (req, res) => {
     `);
 });
 
-// 3. Integração com SDK do Stremio
+// 3. Integração das rotas do Stremio
 const addonInterface = builder.getInterface();
 const router = getRouter(addonInterface);
 
