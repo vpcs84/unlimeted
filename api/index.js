@@ -2,10 +2,10 @@ const express = require('express');
 const axios = require('axios');
 const { addonBuilder, getRouter } = require('stremio-addon-sdk');
 
-// 1. Configuração do Manifest do Addon
+// Configuração do Manifest do Addon
 const manifest = {
     id: 'org.unlimplay.stremio',
-    version: '1.2.0',
+    version: '1.3.0',
     name: 'UnlimPlay Streams',
     description: 'Servidor de reprodução de Filmes e Séries via UnlimPlay.',
     resources: ['stream'],
@@ -47,59 +47,101 @@ function unpackDeanEdwards(html) {
 }
 
 /**
- * Scraper para extrair a URL do arquivo .m3u8 da página do UnlimPlay
+ * Executa requisições HTTP testando múltiplas estratégias contra erros 403
  */
-async function extractM3u8(embedUrl) {
-    console.log(`[SCRAPER] Requisitando Embed: ${embedUrl}`);
-    try {
-        const response = await axios.get(embedUrl, {
+async function fetchHtmlWithFallback(embedUrl) {
+    const strategies = [
+        // Estratégia 1: Identificação de Googlebot (ignora a maioria dos bloqueios de embed)
+        {
+            name: 'Googlebot UA',
+            url: embedUrl,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5'
+            }
+        },
+        // Estratégia 2: Chrome Desktop Real + Sec-Ch-Ua
+        {
+            name: 'Chrome Desktop',
+            url: embedUrl,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
                 'Referer': 'https://unlimplay.com/',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-                'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8,pt;q=0.7',
                 'Sec-Ch-Ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
                 'Sec-Ch-Ua-Mobile': '?0',
-                'Sec-Ch-Ua-Platform': '"Windows"',
-                'Sec-Fetch-Dest': 'document',
-                'Sec-Fetch-Mode': 'navigate',
-                'Sec-Fetch-Site': 'none'
-            },
-            timeout: 7000
-        });
-
-        const html = response.data;
-        const m3u8Regex = /(https?:\/\/[^"'\s]+\.m3u8[^"'\s]*)/i;
-
-        // Passos de extração:
-        // 1. Busca direta no código HTML
-        let match = html.match(m3u8Regex);
-        if (match && match[1]) {
-            console.log(`[SCRAPER] ✅ .m3u8 encontrado diretamente no HTML: ${match[1]}`);
-            return match[1];
-        }
-
-        // 2. Busca dentro de script obfustado (Dean Edwards)
-        console.log('[SCRAPER] Tentando desobfuscar código JavaScript...');
-        const unpackedCode = unpackDeanEdwards(html);
-
-        if (unpackedCode) {
-            match = unpackedCode.match(m3u8Regex);
-            if (match && match[1]) {
-                console.log(`[SCRAPER] ✅ .m3u8 encontrado após desobfustar JS: ${match[1]}`);
-                return match[1];
+                'Sec-Ch-Ua-Platform': '"Windows"'
+            }
+        },
+        // Estratégia 3: Proxy CORS para ocultar o IP de Datacenter do Vercel/AWS
+        {
+            name: 'CORS Proxy Intermediário',
+            url: `https://corsproxy.io/?${encodeURIComponent(embedUrl)}`,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
         }
+    ];
 
-        console.warn('[SCRAPER] ⚠️ Nenhum link .m3u8 foi localizado.');
-        return null;
-    } catch (error) {
-        console.error(`[SCRAPER] ❌ Erro ao acessar embed:`, error.message);
-        return null;
+    for (const strategy of strategies) {
+        try {
+            console.log(`[SCRAPER] Tentando estratégia: ${strategy.name}`);
+            const response = await axios.get(strategy.url, {
+                headers: strategy.headers,
+                timeout: 5000
+            });
+
+            if (response.status === 200 && response.data) {
+                console.log(`[SCRAPER] ✅ Sucesso (HTTP 200) com: ${strategy.name}`);
+                return response.data;
+            }
+        } catch (err) {
+            console.warn(`[SCRAPER] ⚠️ Falha na estratégia ${strategy.name}: ${err.message}`);
+        }
     }
+
+    return null;
 }
 
-// 2. Manipulador de Streams do Stremio
+/**
+ * Scraper para extrair a URL do arquivo .m3u8
+ */
+async function extractM3u8(embedUrl) {
+    console.log(`[SCRAPER] Iniciando requisição para: ${embedUrl}`);
+    
+    const html = await fetchHtmlWithFallback(embedUrl);
+    if (!html) {
+        console.error('[SCRAPER] ❌ Não foi possível obter o HTML do embed.');
+        return null;
+    }
+
+    const m3u8Regex = /(https?:\/\/[^"'\s]+\.m3u8[^"'\s]*)/i;
+
+    // 1. Busca direta no código HTML
+    let match = html.match(m3u8Regex);
+    if (match && match[1]) {
+        console.log(`[SCRAPER] ✅ .m3u8 localizado no HTML: ${match[1]}`);
+        return match[1];
+    }
+
+    // 2. Busca dentro de código JS desobfustado
+    console.log('[SCRAPER] Analisando e desobfustando scripts...');
+    const unpackedCode = unpackDeanEdwards(html);
+
+    if (unpackedCode) {
+        match = unpackedCode.match(m3u8Regex);
+        if (match && match[1]) {
+            console.log(`[SCRAPER] ✅ .m3u8 localizado no script desobfustado: ${match[1]}`);
+            return match[1];
+        }
+    }
+
+    console.warn('[SCRAPER] ⚠️ Nenhum .m3u8 encontrado no código da página.');
+    return null;
+}
+
+// Manipulador de Streams do Stremio
 builder.defineStreamHandler(async (args) => {
     const { type, id } = args;
     let embedUrl = null;
@@ -122,7 +164,7 @@ builder.defineStreamHandler(async (args) => {
 
     const streams = [];
 
-    // Tenta extrair o link .m3u8 direto
+    // Tenta extrair a URL de vídeo .m3u8
     const directM3u8Url = await extractM3u8(embedUrl);
 
     if (directM3u8Url) {
@@ -139,7 +181,7 @@ builder.defineStreamHandler(async (args) => {
         });
     }
 
-    // Adiciona sempre o Fallback para abrir no navegador/embed
+    // Sempre disponibiliza a opção Web / ExternalUrl como Fallback
     streams.push({
         title: '🌐 UnlimPlay (Player Web / Embed)',
         externalUrl: embedUrl
@@ -148,7 +190,6 @@ builder.defineStreamHandler(async (args) => {
     return { streams };
 });
 
-// 3. Servidor Express para Serverless (Vercel)
 const app = express();
 const addonInterface = builder.getInterface();
 const router = getRouter(addonInterface);
