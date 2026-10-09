@@ -3,9 +3,9 @@ const { addonBuilder, getRouter } = require('stremio-addon-sdk');
 
 const manifest = {
     id: 'org.unlimplay.stremio',
-    version: '1.4.0',
+    version: '1.5.0',
     name: 'UnlimPlay Streams',
-    description: 'Reprodução oficial de Filmes e Séries via UnlimPlay Web Player.',
+    description: 'Player Web oficial encapsulado para Filmes e Séries via UnlimPlay.',
     resources: ['stream'],
     types: ['movie', 'series'],
     idPrefixes: ['tt', 'tmdb:'],
@@ -14,39 +14,33 @@ const manifest = {
 
 const builder = new addonBuilder(manifest);
 
-builder.defineStreamHandler((args) => {
+// 1. Manipulador de Streams do Stremio
+builder.defineStreamHandler((args, req) => {
     const { type, id } = args;
-    let embedUrl = null;
+    const host = req.headers.host || 'localhost:3000';
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+
+    let playerPath = null;
 
     if (type === 'movie') {
-        // Suporta IDs: tt28650488 ou tmdb:1226863
         const cleanId = id.startsWith('tmdb:') ? id.replace('tmdb:', '') : id;
-        embedUrl = `https://unlimplay.com/f/embed/movie/${cleanId}`;
+        playerPath = `/player/movie/${cleanId}`;
     } else if (type === 'series') {
-        // Suporta formatos:
-        // IMDb: tt0903747:3:10
-        // TMDB: tmdb:1396:3:10
         const parts = id.split(':');
-
         if (id.startsWith('tmdb:')) {
-            const tmdbId = parts[1];
-            const season = parts[2];
-            const episode = parts[3];
-            embedUrl = `https://unlimplay.com/f/embed/tv/${tmdbId}/${season}/${episode}`;
+            playerPath = `/player/tv/${parts[1]}/${parts[2]}/${parts[3]}`;
         } else {
-            const imdbId = parts[0];
-            const season = parts[1];
-            const episode = parts[2];
-            embedUrl = `https://unlimplay.com/f/embed/tv/${imdbId}/${season}/${episode}`;
+            playerPath = `/player/tv/${parts[0]}/${parts[1]}/${parts[2]}`;
         }
     }
 
-    if (embedUrl) {
+    if (playerPath) {
+        const playerUrl = `${protocol}://${host}${playerPath}`;
         return Promise.resolve({
             streams: [
                 {
-                    title: '▶ UnlimPlay (Player Web Oficial)',
-                    externalUrl: embedUrl
+                    title: '▶ UnlimPlay (Player Web Encapsulado)',
+                    externalUrl: playerUrl
                 }
             ]
         });
@@ -56,6 +50,48 @@ builder.defineStreamHandler((args) => {
 });
 
 const app = express();
+
+// 2. Rota HTML que renderiza o Iframe (Simula a "VISTA PREVIA")
+app.get('/player/:type/:id/:season?/:episode?', (req, res) => {
+    const { type, id, season, episode } = req.params;
+    let embedSrc = '';
+
+    if (type === 'movie') {
+        embedSrc = `https://unlimplay.com/f/embed/movie/${id}`;
+    } else if (type === 'tv') {
+        embedSrc = `https://unlimplay.com/f/embed/tv/${id}/${season}/${episode}`;
+    }
+
+    if (!embedSrc) {
+        return res.status(400).send('Parâmetros inválidos');
+    }
+
+    // Retorna HTML responsivo em tela cheia com Iframe
+    res.send(`
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>UnlimPlay Player</title>
+            <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                html, body { width: 100%; height: 100%; background-color: #000; overflow: hidden; }
+                iframe { width: 100%; height: 100%; border: none; }
+            </style>
+        </head>
+        <body>
+            <iframe 
+                src="${embedSrc}" 
+                allowfullscreen 
+                allow="autoplay; encrypted-media; picture-in-picture">
+            </iframe>
+        </body>
+        </html>
+    `);
+});
+
+// 3. Integração com SDK do Stremio
 const addonInterface = builder.getInterface();
 const router = getRouter(addonInterface);
 
