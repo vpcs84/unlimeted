@@ -1,6 +1,6 @@
 {
-  "name": "stremio-unlimplay-addon",
-  "version": "1.4.0",
+  "name": "stremio-multistream-addon",
+  "version": "1.7.0",
   "main": "api/index.js",
   "scripts": {
     "start": "node api/index.js"
