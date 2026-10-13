@@ -3,9 +3,9 @@ const { addonBuilder, getRouter } = require('stremio-addon-sdk');
 
 const manifest = {
     id: 'org.multistream.stremio',
-    version: '1.7.0',
+    version: '1.10.0',
     name: 'Multi-Stream Players',
-    description: 'Player Web oficial encapsulado para Filmes e Séries via UnlimPlay, VidSrc e VidLink.',
+    description: 'Player Web oficial encapsulado para Filmes e Séries via UnlimPlay, VidSrc, VidLink, MultiEmbed, VidCore e 2Embed.',
     resources: ['stream'],
     types: ['movie', 'series'],
     idPrefixes: ['tt', 'tmdb:'],
@@ -26,7 +26,8 @@ builder.defineStreamHandler((args) => {
     let streams = [];
 
     if (type === 'movie') {
-        const cleanId = id.startsWith('tmdb:') ? id.replace('tmdb:', '') : id;
+        const isTmdb = id.startsWith('tmdb:');
+        const cleanId = isTmdb ? id.replace('tmdb:', '') : id;
 
         // Fonte 1: UnlimPlay
         streams.push({
@@ -46,11 +47,31 @@ builder.defineStreamHandler((args) => {
             externalUrl: `${domain}/player/vidlink/movie/${cleanId}`
         });
 
+        // Fonte 4: MultiEmbed
+        const multiEmbedQuery = isTmdb ? `video_id=${cleanId}&tmdb=1` : `video_id=${cleanId}`;
+        streams.push({
+            title: '▶ MultiEmbed (Player Web Encapsulado)',
+            externalUrl: `${domain}/player/multiembed/movie?${multiEmbedQuery}`
+        });
+
+        // Fonte 5: VidCore
+        streams.push({
+            title: '▶ VidCore (Player Web Encapsulado)',
+            externalUrl: `${domain}/player/vidcore/movie/${cleanId}`
+        });
+
+        // Fonte 6: 2Embed
+        streams.push({
+            title: '▶ 2Embed (Player Web Encapsulado)',
+            externalUrl: `${domain}/player/2embed/movie/${cleanId}`
+        });
+
     } else if (type === 'series') {
         const parts = id.split(':');
+        const isTmdb = id.startsWith('tmdb:');
         let mediaId, season, episode;
 
-        if (id.startsWith('tmdb:')) {
+        if (isTmdb) {
             mediaId = parts[1];
             season = parts[2];
             episode = parts[3];
@@ -77,6 +98,27 @@ builder.defineStreamHandler((args) => {
             title: '▶ VidLink (Player Web Encapsulado)',
             externalUrl: `${domain}/player/vidlink/tv/${mediaId}/${season}/${episode}`
         });
+
+        // Fonte 4: MultiEmbed
+        const multiEmbedQuery = isTmdb 
+            ? `video_id=${mediaId}&tmdb=1&s=${season}&e=${episode}` 
+            : `video_id=${mediaId}&s=${season}&e=${episode}`;
+        streams.push({
+            title: '▶ MultiEmbed (Player Web Encapsulado)',
+            externalUrl: `${domain}/player/multiembed/tv?${multiEmbedQuery}`
+        });
+
+        // Fonte 5: VidCore
+        streams.push({
+            title: '▶ VidCore (Player Web Encapsulado)',
+            externalUrl: `${domain}/player/vidcore/tv/${mediaId}/${season}/${episode}`
+        });
+
+        // Fonte 6: 2Embed
+        streams.push({
+            title: '▶ 2Embed (Player Web Encapsulado)',
+            externalUrl: `${domain}/player/2embed/tv/${mediaId}/${season}/${episode}`
+        });
     }
 
     return Promise.resolve({ streams });
@@ -84,7 +126,30 @@ builder.defineStreamHandler((args) => {
 
 const app = express();
 
-// Rota universal de player encapsulado em Iframe para diferentes provedores
+// Rota específica para MultiEmbed (processa query parameters)
+app.get('/player/multiembed/:type', (req, res) => {
+    const { type } = req.params;
+    const { video_id, tmdb, s, e } = req.query;
+    let embedSrc = '';
+
+    if (type === 'movie') {
+        embedSrc = tmdb === '1'
+            ? `https://multiembed.mov/?video_id=${video_id}&tmdb=1`
+            : `https://multiembed.mov/?video_id=${video_id}`;
+    } else if (type === 'tv') {
+        embedSrc = tmdb === '1'
+            ? `https://multiembed.mov/?video_id=${video_id}&tmdb=1&s=${s}&e=${e}`
+            : `https://multiembed.mov/?video_id=${video_id}&s=${s}&e=${e}`;
+    }
+
+    if (!embedSrc) {
+        return res.status(400).send('Parâmetros inválidos');
+    }
+
+    renderIframe(res, 'MultiEmbed', embedSrc);
+});
+
+// Rota universal para os demais provedores
 app.get('/player/:provider/:type/:id/:season?/:episode?', (req, res) => {
     const { provider, type, id, season, episode } = req.params;
     let embedSrc = '';
@@ -107,19 +172,36 @@ app.get('/player/:provider/:type/:id/:season?/:episode?', (req, res) => {
         } else if (type === 'tv') {
             embedSrc = `https://vidlink.pro/tv/${id}/${season}/${episode}`;
         }
+    } else if (provider === 'vidcore') {
+        if (type === 'movie') {
+            embedSrc = `https://vidcore.org/embed/movie/${id}`;
+        } else if (type === 'tv') {
+            embedSrc = `https://vidcore.org/embed/tv/${id}/${season}/${episode}`;
+        }
+    } else if (provider === '2embed') {
+        if (type === 'movie') {
+            embedSrc = `https://www.2embed.online/embed/movie/${id}`;
+        } else if (type === 'tv') {
+            embedSrc = `https://www.2embed.online/embed/tv/${id}/${season}/${episode}`;
+        }
     }
 
     if (!embedSrc) {
         return res.status(400).send('Fonte ou parâmetros inválidos');
     }
 
+    renderIframe(res, provider.toUpperCase(), embedSrc);
+});
+
+// Função auxiliar para renderizar a página HTML do player em iframe
+function renderIframe(res, title, embedSrc) {
     res.send(`
         <!DOCTYPE html>
         <html lang="pt-BR">
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>${provider.toUpperCase()} Player</title>
+            <title>${title} Player</title>
             <style>
                 * { margin: 0; padding: 0; box-sizing: border-box; }
                 html, body { width: 100%; height: 100%; background-color: #000; overflow: hidden; }
@@ -135,7 +217,7 @@ app.get('/player/:provider/:type/:id/:season?/:episode?', (req, res) => {
         </body>
         </html>
     `);
-});
+}
 
 const addonInterface = builder.getInterface();
 const router = getRouter(addonInterface);
