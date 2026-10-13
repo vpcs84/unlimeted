@@ -3,7 +3,7 @@ const { addonBuilder, getRouter } = require('stremio-addon-sdk');
 
 const manifest = {
     id: 'org.multistream.stremio',
-    version: '1.6.1',
+    version: '1.6.2',
     name: 'Multi-Stream Players',
     description: 'Player Web oficial encapsulado para Filmes e Séries via UnlimPlay e VidSrc.',
     resources: ['stream'],
