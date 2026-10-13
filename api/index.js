@@ -3,9 +3,9 @@ const { addonBuilder, getRouter } = require('stremio-addon-sdk');
 
 const manifest = {
     id: 'org.multistream.stremio',
-    version: '1.6.2',
+    version: '1.7.0',
     name: 'Multi-Stream Players',
-    description: 'Player Web oficial encapsulado para Filmes e Séries via UnlimPlay e VidSrc.',
+    description: 'Player Web oficial encapsulado para Filmes e Séries via UnlimPlay, VidSrc e VidLink.',
     resources: ['stream'],
     types: ['movie', 'series'],
     idPrefixes: ['tt', 'tmdb:'],
@@ -40,6 +40,12 @@ builder.defineStreamHandler((args) => {
             externalUrl: `${domain}/player/vidsrc/movie/${cleanId}`
         });
 
+        // Fonte 3: VidLink
+        streams.push({
+            title: '▶ VidLink (Player Web Encapsulado)',
+            externalUrl: `${domain}/player/vidlink/movie/${cleanId}`
+        });
+
     } else if (type === 'series') {
         const parts = id.split(':');
         let mediaId, season, episode;
@@ -65,6 +71,12 @@ builder.defineStreamHandler((args) => {
             title: '▶ VidSrc (Player Web Encapsulado)',
             externalUrl: `${domain}/player/vidsrc/tv/${mediaId}/${season}/${episode}`
         });
+
+        // Fonte 3: VidLink
+        streams.push({
+            title: '▶ VidLink (Player Web Encapsulado)',
+            externalUrl: `${domain}/player/vidlink/tv/${mediaId}/${season}/${episode}`
+        });
     }
 
     return Promise.resolve({ streams });
@@ -88,6 +100,12 @@ app.get('/player/:provider/:type/:id/:season?/:episode?', (req, res) => {
             embedSrc = `https://vidsrc.mov/embed/movie/${id}`;
         } else if (type === 'tv') {
             embedSrc = `https://vidsrc.mov/embed/tv/${id}/${season}/${episode}`;
+        }
+    } else if (provider === 'vidlink') {
+        if (type === 'movie') {
+            embedSrc = `https://vidlink.pro/movie/${id}`;
+        } else if (type === 'tv') {
+            embedSrc = `https://vidlink.pro/tv/${id}/${season}/${episode}`;
         }
     }
 
