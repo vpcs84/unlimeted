@@ -3,9 +3,9 @@ const { addonBuilder, getRouter } = require('stremio-addon-sdk');
 
 const manifest = {
     id: 'org.multistream.stremio',
-    version: '1.10.0',
+    version: '1.11.0',
     name: 'Multi-Stream Players',
-    description: 'Player Web oficial encapsulado para Filmes e Séries via UnlimPlay, VidSrc, VidLink, MultiEmbed, VidCore e 2Embed.',
+    description: 'Player Web oficial encapsulado para Filmes e Séries via UnlimPlay, VidSrc, VidLink e MultiEmbed.',
     resources: ['stream'],
     types: ['movie', 'series'],
     idPrefixes: ['tt', 'tmdb:'],
@@ -54,18 +54,6 @@ builder.defineStreamHandler((args) => {
             externalUrl: `${domain}/player/multiembed/movie?${multiEmbedQuery}`
         });
 
-        // Fonte 5: VidCore
-        streams.push({
-            title: '▶ VidCore (Player Web Encapsulado)',
-            externalUrl: `${domain}/player/vidcore/movie/${cleanId}`
-        });
-
-        // Fonte 6: 2Embed
-        streams.push({
-            title: '▶ 2Embed (Player Web Encapsulado)',
-            externalUrl: `${domain}/player/2embed/movie/${cleanId}`
-        });
-
     } else if (type === 'series') {
         const parts = id.split(':');
         const isTmdb = id.startsWith('tmdb:');
@@ -106,18 +94,6 @@ builder.defineStreamHandler((args) => {
         streams.push({
             title: '▶ MultiEmbed (Player Web Encapsulado)',
             externalUrl: `${domain}/player/multiembed/tv?${multiEmbedQuery}`
-        });
-
-        // Fonte 5: VidCore
-        streams.push({
-            title: '▶ VidCore (Player Web Encapsulado)',
-            externalUrl: `${domain}/player/vidcore/tv/${mediaId}/${season}/${episode}`
-        });
-
-        // Fonte 6: 2Embed
-        streams.push({
-            title: '▶ 2Embed (Player Web Encapsulado)',
-            externalUrl: `${domain}/player/2embed/tv/${mediaId}/${season}/${episode}`
         });
     }
 
@@ -171,18 +147,6 @@ app.get('/player/:provider/:type/:id/:season?/:episode?', (req, res) => {
             embedSrc = `https://vidlink.pro/movie/${id}`;
         } else if (type === 'tv') {
             embedSrc = `https://vidlink.pro/tv/${id}/${season}/${episode}`;
-        }
-    } else if (provider === 'vidcore') {
-        if (type === 'movie') {
-            embedSrc = `https://vidcore.org/embed/movie/${id}`;
-        } else if (type === 'tv') {
-            embedSrc = `https://vidcore.org/embed/tv/${id}/${season}/${episode}`;
-        }
-    } else if (provider === '2embed') {
-        if (type === 'movie') {
-            embedSrc = `https://www.2embed.online/embed/movie/${id}`;
-        } else if (type === 'tv') {
-            embedSrc = `https://www.2embed.online/embed/tv/${id}/${season}/${episode}`;
         }
     }
 
