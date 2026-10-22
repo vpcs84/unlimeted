@@ -3,7 +3,7 @@ const { addonBuilder, getRouter } = require('stremio-addon-sdk');
 
 const manifest = {
     id: 'org.multistream.stremio',
-    version: '1.11.0',
+    version: '1.11.1',
     name: 'Multi-Stream Players',
     description: 'Player Web oficial encapsulado para Filmes e Séries via UnlimPlay, VidSrc, VidLink e MultiEmbed.',
     resources: ['stream'],
@@ -18,7 +18,6 @@ const builder = new addonBuilder(manifest);
 builder.defineStreamHandler((args) => {
     const { type, id } = args;
 
-    // Detecta automaticamente o domínio na Vercel
     const domain = process.env.VERCEL_URL 
         ? `https://${process.env.VERCEL_URL}` 
         : 'http://localhost:7000';
@@ -102,7 +101,86 @@ builder.defineStreamHandler((args) => {
 
 const app = express();
 
-// Rota específica para MultiEmbed (processa query parameters)
+// 1. Rota Principal (Página de Instalação do Addon)
+app.get('/', (req, res) => {
+    const host = req.headers.host || process.env.VERCEL_URL || 'localhost:7000';
+    const manifestUrl = `https://${host}/manifest.json`;
+    const stremioUrl = `stremio://${host}/manifest.json`;
+
+    res.send(`
+        <!DOCTYPE html>
+        <html lang="pt-BR">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>${manifest.name} - Stremio Addon</title>
+            <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                body { 
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                    background: #111216; 
+                    color: #fff; 
+                    display: flex; 
+                    justify-content: center; 
+                    align-items: center; 
+                    min-height: 100vh;
+                    padding: 20px;
+                }
+                .card {
+                    background: #1a1c23;
+                    border-radius: 12px;
+                    padding: 32px;
+                    max-width: 480px;
+                    width: 100%;
+                    text-align: center;
+                    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+                    border: 1px solid #2a2d3a;
+                }
+                h1 { font-size: 24px; margin-bottom: 8px; color: #fff; }
+                p { color: #a0a5b5; font-size: 14px; margin-bottom: 24px; line-height: 1.5; }
+                .btn {
+                    display: block;
+                    width: 100%;
+                    padding: 14px;
+                    border-radius: 8px;
+                    font-weight: bold;
+                    text-decoration: none;
+                    margin-bottom: 12px;
+                    transition: all 0.2s;
+                }
+                .btn-install {
+                    background: #8a5cf6;
+                    color: #fff;
+                }
+                .btn-install:hover { background: #7c3aed; }
+                .btn-copy {
+                    background: #2a2d3a;
+                    color: #a0a5b5;
+                    font-size: 13px;
+                }
+                .btn-copy:hover { background: #373b4d; color: #fff; }
+                .version { font-size: 12px; color: #606470; margin-top: 16px; }
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <h1>${manifest.name}</h1>
+                <p>${manifest.description}</p>
+                
+                <!-- Botão que abre direto no Stremio -->
+                <a href="${stremioUrl}" class="btn btn-install">🚀 Instalar no Stremio</a>
+                
+                <!-- Botão alternativo para copiar o link do manifesto -->
+                <a href="${manifestUrl}" target="_blank" class="btn btn-copy">📋 Abrir manifest.json</a>
+                
+                <div class="version">Versão v${manifest.version}</div>
+            </div>
+        </body>
+        </html>
+    `);
+});
+
+// 2. Rota de MultiEmbed
 app.get('/player/multiembed/:type', (req, res) => {
     const { type } = req.params;
     const { video_id, tmdb, s, e } = req.query;
@@ -125,7 +203,7 @@ app.get('/player/multiembed/:type', (req, res) => {
     renderIframe(res, 'MultiEmbed', embedSrc);
 });
 
-// Rota universal para os demais provedores
+// 3. Rota dos outros provedores
 app.get('/player/:provider/:type/:id/:season?/:episode?', (req, res) => {
     const { provider, type, id, season, episode } = req.params;
     let embedSrc = '';
@@ -157,7 +235,6 @@ app.get('/player/:provider/:type/:id/:season?/:episode?', (req, res) => {
     renderIframe(res, provider.toUpperCase(), embedSrc);
 });
 
-// Função auxiliar para renderizar a página HTML do player em iframe
 function renderIframe(res, title, embedSrc) {
     res.send(`
         <!DOCTYPE html>
